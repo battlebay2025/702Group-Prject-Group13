@@ -20,10 +20,10 @@ df <- read.csv("Question3.csv")
 #Data Clean
 df <- df %>%
   mutate(
-    date = as.Date(date, format = "%Y/%m/%d"),   # 先转成Date格式
-    year = year(date),                           # 提取年
-    month = month(date),                         # 提取月
-    day = day(date)                              # 提取日
+    date = as.Date(date, format = "%Y/%m/%d"),   
+    year = year(date),                           
+    month = month(date),                         
+    day = day(date)                              
   )
 
 df_cleaned <- df %>% 
@@ -31,33 +31,22 @@ df_cleaned <- df %>%
 ```
 
 ```{r}
+## Data Visualization
 ggplot(df_cleaned, aes(x = date, y = Daily_Infections, color = state, group = state)) +
-  geom_line(alpha = 0.8) + # 使用 geom_line() 来画趋势线
+  geom_line(alpha = 0.8) + # use geom_line() draw trend line
   labs(
     title = "Infection Trend by State in Australia",
     x = "Date",
     y = "Daily Infection",
     color = "State"
   ) +
-  theme_minimal() + # 使用一个简洁的主题
+  theme_minimal() + 
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1), # 让X轴的日期倾斜，防止重叠
-    legend.position = "top" # 将图例放在顶部
+    axis.text.x = element_text(angle = 45, hjust = 1), # Make the X-axis date skewed to prevent overlap
+    legend.position = "top" 
   )
 ```
 
-```{r}
-ggplot(df_cleaned, aes(x = date, y = Daily_Infections)) +
-  geom_line(aes(color = state), show.legend = FALSE) + # 在这里上色，并隐藏图例
-  facet_wrap(~ state, ncol = 2, scales = "free_y") + # 核心函数：按 'state' 创建子图
-  labs(
-    title = "Infection Trend by State in Australia",
-    x = "Date",
-    y = "Daily_Infection"
-  ) +
-  theme_bw() + # 更换一个带边框的主题，让子图更清晰
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
 
 
 ```{r}
@@ -67,6 +56,7 @@ geom_line() + geom_point() +
 ```
 
 ```{r}
+#Use moving average to make forecast
 k = 7
 df_forecast <- df_cleaned |>
 mutate(MA3_prediction = c(
