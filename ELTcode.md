@@ -442,26 +442,22 @@ ORDER BY
     CVD.CountryName;
 	
 --Q3
--- This query calculates the daily infections and a 7-day rolling average
+-- This query extact the daily infections
 -- for each Australian state in 2020 to analyze the pandemic's trajectory.
 WITH Daily_Metrics_AU AS (
     -- First, calculate the daily new infections and deaths from the cumulative data
     SELECT
         "ObservationDate" AS date,
         "Province/State" AS state,
-        Confirmed - LAG(Confirmed, 1, 0) OVER (PARTITION BY "Province/State" ORDER BY "ObservationDate") AS Daily_Infections,
-        Deaths - LAG(Deaths, 1, 0) OVER (PARTITION BY "Province/State" ORDER BY "ObservationDate") AS Daily_Deaths
+        Daily_Infections
     FROM
-        covid_19_data
+        TEMP_daily
     WHERE
         "Country/Region" = 'Australia')
--- Now, calculate the 7-day rolling average of infections
 SELECT
     date,
     state,
-    Daily_Infections,
-    -- This window function calculates the average over the current day and the previous 6 days
-    AVG(Daily_Infections) OVER (PARTITION BY state ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS SevenDayAvgInfections
+    Daily_Infections
 FROM
     Daily_Metrics_AU
 WHERE
