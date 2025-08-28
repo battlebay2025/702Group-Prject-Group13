@@ -1,0 +1,104 @@
+---
+title: "Question3"
+author: "Yuxin Lin"
+format: pdf
+editor: visual
+---
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+```
+
+```{r}
+df <- read.csv("Question3.csv")
+```
+
+```{r}
+#Data Clean
+df <- df %>%
+  mutate(
+    date = as.Date(date, format = "%Y/%m/%d"),   # 先转成Date格式
+    year = year(date),                           # 提取年
+    month = month(date),                         # 提取月
+    day = day(date)                              # 提取日
+  )
+
+df_cleaned <- df %>% 
+  drop_na(state)
+```
+
+```{r}
+ggplot(df_cleaned, aes(x = date, y = Daily_Infections, color = state, group = state)) +
+  geom_line(alpha = 0.8) + # 使用 geom_line() 来画趋势线
+  labs(
+    title = "Infection Trend by State in Australia",
+    x = "Date",
+    y = "Daily Infection",
+    color = "State"
+  ) +
+  theme_minimal() + # 使用一个简洁的主题
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1), # 让X轴的日期倾斜，防止重叠
+    legend.position = "top" # 将图例放在顶部
+  )
+```
+
+```{r}
+ggplot(df_cleaned, aes(x = date, y = Daily_Infections)) +
+  geom_line(aes(color = state), show.legend = FALSE) + # 在这里上色，并隐藏图例
+  facet_wrap(~ state, ncol = 2, scales = "free_y") + # 核心函数：按 'state' 创建子图
+  labs(
+    title = "Infection Trend by State in Australia",
+    x = "Date",
+    y = "Daily_Infection"
+  ) +
+  theme_bw() + # 更换一个带边框的主题，让子图更清晰
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+df_cleaned |> ggplot(aes(x = date, y = Daily_Infections )) +
+geom_line() + geom_point() +
+  scale_x_date(date_labels = "%m-%Y")
+```
+
+```{r}
+k = 7
+df_forecast <- df_cleaned |>
+mutate(MA3_prediction = c(
+rep(NA, k-1),
+ma(Daily_Infections, order = k, centre = FALSE)
+)[1:dim(df_cleaned)[1]])
+
+(df_forecast <- df_forecast |>
+  mutate(
+    Forecast_Error = Daily_Infections - MA3_prediction,
+    Absolute_Forecast_Error = abs(Forecast_Error),
+    Square_Forecast_Error = Forecast_Error^2,
+    Abs_Perc_Error = abs(100*Forecast_Error/Daily_Infections)
+  ))
+```
+
+```{r}
+df_forecast_long <- df_forecast |> pivot_longer(
+cols = contains("prediction"),
+names_to = "Method",
+values_to = "Prediction"
+)
+print(df_forecast_long, n = 5)
+```
+
+
+
+```{r}
+df_cleaned |> ggplot(aes(x = date, y = Daily_Infections)) +
+geom_line() + geom_point() +
+geom_line(aes(x = date, y = `Prediction`,
+col = Method, group = Method), linewidth = 2,
+data = df_forecast_long)
+```
+
