@@ -372,74 +372,30 @@ WHERE Daily_Deaths IS NULL;
 -- Research Questions
 --Q1
 -- vaccine technology deployment and changes in infection rates in the US during 2021.
-SELECT
-    T.month,
-    V.vaccineType,
-    -- Calculate the total doses of this technology type administered in a given month
-    SUM(F.Daily_Doses_of_This_Vaccine) AS TotalDosesAdministered,
-    -- Calculate the average number of daily infections in that month
-    -- AVG is used because infections are a country-level metric repeated for each vaccine
-    AVG(F.Daily_Infections) AS AverageDailyInfections
-FROM
-    Fact_COVID_Metrics AS F
-JOIN
-    "Location" AS L ON F.LocationID = L.LocationID
-JOIN
-    "Time" AS T ON F.time_id = T.time_id
-JOIN
-    "Vaccine" AS V ON F.VaccineID = V.VaccineID
-WHERE
-    L.CountryName = 'US' AND T.year = 2021
-	AND T.month <= 5
-GROUP BY
-    T.month,
-    V.vaccineType
-ORDER BY
-    T.month,
-    V.vaccineType;
+SELECT T.month, V.vaccineType, F.Daily_Doses_of_This_Vaccine AS TotalDosesAdministered, AVG(F.Daily_Infections) AS AverageDailyInfections
+FROM Fact_COVID_Metrics AS F
+JOIN "Location" AS L ON F.LocationID = L.LocationID
+JOIN "Time" AS T ON F.time_id = T.time_id
+JOIN "Vaccine" AS V ON F.VaccineID = V.VaccineID
+WHERE L.CountryName = 'US' 
+AND T.year = 2021
+AND T.month <= 5
+GROUP BY T.month,V.vaccineType
+ORDER BY V.vaccineType, T.month;
 	
 	
 --Q2
 -- This query prepares a dataset to analyze the correlation between vaccine diversity
-WITH
-CountryVaccineDiversity AS (
-    SELECT
-        L.CountryName,
-        COUNT(DISTINCT F.VaccineID) AS NumberOfVaccineTypes
-    FROM
-        Fact_COVID_Metrics AS F
-    JOIN
-        Location L ON F.LocationID = L.LocationID
-    JOIN
-        "Time" T ON F.time_id = T.time_id
-    WHERE
-        T.year = 2021
-    GROUP BY
-        L.CountryName),
--- Second, create a temporary table to find the max vaccination rate per country
-CountryVaccinationRate AS (
-    SELECT
-        country,
-        MAX(total_vaccinations_per_hundred) AS MaxVaccinationRate
-    FROM
-        country_vaccinations
-    WHERE
-        STRFTIME('%Y', date) = '2021'
-    GROUP BY
-        country)
--- Finally, join these two tables together to get the final result
-SELECT
-    CVD.CountryName,
-    CVD.NumberOfVaccineTypes,
-    CVR.MaxVaccinationRate
-FROM
-    CountryVaccineDiversity AS CVD
-JOIN
-    CountryVaccinationRate AS CVR ON CVD.CountryName = CVR.country
-WHERE
-    CVR.MaxVaccinationRate IS NOT NULL AND CVR.MaxVaccinationRate > 0
-ORDER BY
-    CVD.CountryName;
+SELECT L.CountryName, COUNT(DISTINCT F.VaccineID) AS NumberOfVaccineTypes, SUM(F.Daily_Deaths) AS TotalDeaths
+FROM Fact_COVID_Metrics AS F
+JOIN Location L 
+ON F.LocationID = L.LocationID
+JOIN "Time" T 
+ON F.time_id = T.time_id
+WHERE T.year = 2021
+AND F.Daily_Deaths IS NOT NULL
+GROUP BY L.CountryName
+HAVING SUM(F.Daily_Deaths) > 0;
 	
 --Q3
 -- This query extact the daily infections
