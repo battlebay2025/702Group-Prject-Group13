@@ -1,5 +1,11 @@
-# 702Group-Prject-Group13
---Clean DATA
+--Clean Data
+--Clear Negative values
+DELETE FROM covid_19_data
+WHERE Confirmed < 0
+or Deaths < 0 
+or Recovered < 0;
+
+--Initial harmonization of some country names through simple manual verification
 UPDATE country_vaccinations
 SET country = 'US'
 WHERE country = 'United States';
@@ -47,24 +53,22 @@ UPDATE covid_19_data
 SET ObservationDate = SUBSTR(ObservationDate, 7, 4) || '-' || SUBSTR(ObservationDate, 1, 2) || '-' || SUBSTR(ObservationDate, 4, 2);
 
 --Check Problems
---检查covid19和CV表能够匹配的数据数量
-
-SELECT
-    COUNT(*)
-FROM
-    covid_19_data AS TD
-JOIN
-    country_vaccinations AS CV ON TD."Country/Region" = CV.country AND TD.ObservationDate = CV.date;
+--Check the number of data that covid_19_data table and country_vaccination table can match
+SELECT COUNT(*)
+FROM covid_19_data AS TD
+JOIN country_vaccinations AS CV 
+ON TD."Country/Region" = CV.country 
+AND TD.ObservationDate = CV.date;
 
 SELECT COUNT(*) FROM covid_19_data;
 
---找出covid19表和CV表不匹配的国家名称
+--Identify country names that do not match in the covid_19_data table and country_vaccination table
 SELECT DISTINCT T1."Country/Region"
 FROM covid_19_data AS T1
 LEFT JOIN country_vaccinations AS T2 ON T1."Country/Region" = T2.country
 WHERE T2.country IS NULL;
 
---Clean CountryName
+--Harmonization of country names
 UPDATE covid_19_data
 SET "Country/Region" = 'The Bahamas'
 WHERE "Country/Region" = 'Bahamas, The';
@@ -168,7 +172,7 @@ CREATE TABLE Vaccine_Link_Table (
     PRIMARY KEY (country, date, vaccine_name)
 );
 
--- 使用递归CTE (Common Table Expression) 来拆分包含多个疫苗名称的字符串
+--Use recursive CTE (Common Table Expression) to split a string containing multiple vaccine names.
 WITH RECURSIVE split_vaccines(country, date, single_vaccine, remaining_string) AS (
   SELECT
     country,
@@ -200,7 +204,6 @@ WHERE
 
 
 
-
 --Create Dim Table
 CREATE TABLE Location(
 LocationID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,8 +216,7 @@ CREATE TABLE "Time" (
     date TEXT UNIQUE,
     year INTEGER,
     month INTEGER,
-    day INTEGER,
-    quarter INTEGER);
+    day INTEGER);
 
 CREATE TABLE Vaccine(
 VaccineID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +225,7 @@ vaccineType TEXT
 );
 
 
---insert location data
+--Insert location data
 INSERT INTO Location (CountryName, Province_State)
 SELECT
     TRIM(Country) AS CountryName,
@@ -247,7 +249,7 @@ FROM
 WHERE "Country/Region" IS NOT NULL AND "Country/Region" != '';
 
 
---insert time data
+--Insert time data
 WITH RECURSIVE DateSeries(date) AS (
     SELECT MIN(date_val) FROM (
         SELECT MIN(date(ObservationDate)) as date_val FROM covid_19_data
@@ -269,18 +271,17 @@ WITH RECURSIVE DateSeries(date) AS (
         )
     )
 )
-INSERT INTO "Time" (date, year, month, day, quarter)
+INSERT INTO "Time" (date, year, month, day)
 SELECT DISTINCT
     date,
     CAST(strftime('%Y', date) AS INTEGER),
     CAST(strftime('%m', date) AS INTEGER),
-    CAST(strftime('%d', date) AS INTEGER),
-    CAST(((strftime('%m', date) - 1) / 3 + 1) AS INTEGER)
+    CAST(strftime('%d', date) AS INTEGER)
 FROM
     DateSeries;
 
 
---insert vaccine data
+--Insert vaccine data
 INSERT INTO Vaccine (VaccineName, vaccineType)
 SELECT DISTINCT(vaccine),
 CASE
@@ -294,34 +295,17 @@ CASE
     END AS vaccineType
 FROM country_vaccinations_by_manufacturer;
 
---Create Factor Table
-CREATE TABLE Fact_COVID_Metrics (
-    CovidSummaryID INTEGER PRIMARY KEY AUTOINCREMENT,
-    time_id INTEGER,
-    LocationID INTEGER,
-    VaccineID INTEGER,
-    Daily_Vaccinations INTEGER,
-    Total_Vaccinations_Per_Hundred REAL,
-    Daily_Infections INTEGER,
-    Daily_Deaths INTEGER,
-    FOREIGN KEY (time_id) REFERENCES Time(time_id),
-    FOREIGN KEY (LocationID) REFERENCES Location(LocationID),
-    FOREIGN KEY (VaccineID) REFERENCES Vaccine(VaccineID)
-);
-
+--Create Bridge table which contains the daily infections and daily deathe data
+--use MAX() to ensure there would be no negative values
 CREATE TABLE TEMP_daily AS
 SELECT
     "Country/Region",
     "Province/State",
     ObservationDate,
-    Confirmed - LAG(Confirmed, 1, 0) OVER (
-        PARTITION BY "Country/Region", "Province/State"
-        ORDER BY ObservationDate
-    ) AS Daily_Infections,
-    Deaths - LAG(Deaths, 1, 0) OVER (
-        PARTITION BY "Country/Region", "Province/State"
-        ORDER BY ObservationDate
-    ) AS Daily_Deaths
+    MAX(0, Confirmed - LAG(Confirmed, 1, 0) OVER 
+	(PARTITION BY "Country/Region", "Province/State" ORDER BY "ObservationDate")) AS Daily_Infections,
+    MAX(0, Deaths - LAG(Deaths, 1, 0) OVER 
+	(PARTITION BY "Country/Region", "Province/State" ORDER BY "ObservationDate")) AS Daily_Deaths
 FROM
     covid_19_data
 ORDER BY
@@ -329,8 +313,7 @@ ORDER BY
 
 
 	
---insert date
-
+--Create Factor Table
 CREATE TABLE Fact_COVID_Metrics (
     fact_id INTEGER PRIMARY KEY,
     time_id INTEGER,
@@ -341,26 +324,25 @@ CREATE TABLE Fact_COVID_Metrics (
     Daily_Doses_of_This_Vaccine INTEGER, 
     FOREIGN KEY (time_id) REFERENCES "Time"(time_id),
     FOREIGN KEY (LocationID) REFERENCES "Location"(LocationID),
-    FOREIGN KEY (VaccineID) REFERENCES "Vaccine"(VaccineID)
-);
-	
+    FOREIGN KEY (VaccineID) REFERENCES "Vaccine"(VaccineID));
+
+--Insert data into factor table
+--also use MAX() to ensure there would be no negative values in total vaccinations
 INSERT INTO Fact_COVID_Metrics (
     time_id,
     LocationID,
     VaccineID,
     Daily_Infections,
     Daily_Deaths,
-    Daily_Doses_of_This_Vaccine
-)
+    Daily_Doses_of_This_Vaccine)
 WITH Daily_Vaccine_Doses AS (
     SELECT
         location,
         date,
         vaccine,
-        total_vaccinations - LAG(total_vaccinations, 1, 0) OVER (PARTITION BY location, vaccine ORDER BY date) AS daily_doses
+       MAX(0, total_vaccinations - LAG(total_vaccinations, 1, 0) OVER (PARTITION BY location, vaccine ORDER BY date)) AS daily_doses
     FROM
-        country_vaccinations_by_manufacturer
-)
+        country_vaccinations_by_manufacturer)
 SELECT
     DD.time_id,
     DL.LocationID,
@@ -376,13 +358,6 @@ LEFT JOIN "Location" AS DL ON DVD.location = DL.CountryName
 LEFT JOIN "Vaccine" AS DV ON DVD.vaccine = DV.VaccineName
 WHERE
     DL.LocationID IS NOT NULL AND DV.VaccineID IS NOT NULL;
-	
-	
-SELECT count(DISTINCT time_id)
-FROM Fact_COVID_Metrics
-
-DELETE FROM Fact_COVID_Metrics
-WHERE Daily_Doses_of_This_Vaccine < 0;
 
 
 --Clean the null in factor table
@@ -440,8 +415,7 @@ CountryVaccineDiversity AS (
     WHERE
         T.year = 2021
     GROUP BY
-        L.CountryName
-),
+        L.CountryName),
 -- Second, create a temporary table to find the max vaccination rate per country
 CountryVaccinationRate AS (
     SELECT
@@ -452,8 +426,7 @@ CountryVaccinationRate AS (
     WHERE
         STRFTIME('%Y', date) = '2021'
     GROUP BY
-        country
-)
+        country)
 -- Finally, join these two tables together to get the final result
 SELECT
     CVD.CountryName,
@@ -481,8 +454,7 @@ WITH Daily_Metrics_AU AS (
     FROM
         covid_19_data
     WHERE
-        "Country/Region" = 'Australia'
-)
+        "Country/Region" = 'Australia')
 -- Now, calculate the 7-day rolling average of infections
 SELECT
     date,
