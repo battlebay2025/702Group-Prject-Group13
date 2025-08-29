@@ -400,21 +400,7 @@ HAVING SUM(F.Daily_Deaths) > 0;
 --Q3
 -- This query extact the daily infections
 -- for each Australian state in 2020 to analyze the pandemic's trajectory.
-WITH Daily_Metrics_AU AS (
-    -- First, calculate the daily new infections and deaths from the cumulative data
-    SELECT
-        "ObservationDate" AS date,
-        "Province/State" AS state,
-        Daily_Infections
-    FROM
-        TEMP_daily
-    WHERE
-        "Country/Region" = 'Australia')
-SELECT
-    date,
-    state,
-    Daily_Infections
-FROM
-    Daily_Metrics_AU
-WHERE
-    STRFTIME('%Y', date) = '2020';
+SELECT "ObservationDate" AS date, "Province/State" AS state, Confirmed - LAG(Confirmed, 1, 0) OVER (PARTITION BY "Province/State" ORDER BY "ObservationDate") AS Daily_Infections
+FROM covid_19_data
+WHERE "Country/Region" = 'Australia'
+AND STRFTIME('%Y', date) = '2020';
